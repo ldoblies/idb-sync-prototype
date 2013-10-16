@@ -5,5 +5,7 @@ Proof of concept web application implementation that demonstrates HTML5 IndexedD
 
 This project is an extension of the Vanilla JavaScript TodoMVC Example by Oscar Godson: http://todomvc.com/vanilla-examples/vanillajs/
 
+
 References:
+
 [1] Luchin Doblies. "Master-Master Replication of HTML5 IndexedDB using Operators on Tree Updates". Master's Thesis, ETH Zurich, October 2013.
