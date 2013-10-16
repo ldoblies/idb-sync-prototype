@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en" data-framework="javascript">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<title>VanillaJS • TodoMVC</title>
+    <link rel="stylesheet" href="bower_components/todomvc-common/base.css">
+    <script src='http://code.jquery.com/jquery-1.7.2.min.js'></script>
+    <script src='http://localhost:3000/socket.io/socket.io.js'></script>
+    <script type="text/javascript" src="./require.js"></script>
+    <script type="text/javascript">
+      require.config({
+        shim: {
+          underscore: {
+            exports: '_' }
+        }
+      });
+      require(['./lib/underscore'], function(_){
+          //window._ = _;
+      });
+    </script>  
+  </head>
+	<body>
+		<section id="todoapp">
+			<header id="header">
+        				<h1>todos</h1>
+				<input id="new-todo" placeholder="What needs to be done?" autofocus>
+			</header>
+			<section id="main">
+				<input id="toggle-all" type="checkbox">
+				<label for="toggle-all">Mark all as complete</label>
+				<ul id="todo-list"></ul>
+			</section>
+			<footer id="footer">
+				<span id="todo-count"></span>
+				<ul id="filters">
+					<li>
+						<a href="#/">All</a>
+					</li>
+					<li>
+						<a href="#/active">Active</a>
+					</li>
+					<li>
+						<a href="#/completed">Completed</a>
+					</li>
+				</ul>
+				<button id="clear-completed">Clear completed</button>
+			</footer>
+		</section>
+		<footer id="info">
+			<p>Double-click to edit a todo</p>
+      <p>TodoMVC VanillaJS example by <a href="http://twitter.com/oscargodson">Oscar Godson</a><br/>Extended by Luchin Doblies to use IndexedDB &amp; IJSONiq</p>
+      </footer>
+     <!-- 
+      <h2>debuglist</h2>
+        <ul id="messages"></ul>
+        -->
+        
+
+		<script src="bower_components/todomvc-common/base.js"></script>
+		<script src="bower_components/director/build/director.js"></script>
+		<script>
+			// Bootstrap app data
+			window.app = {};
+		</script>
+
+
+
+ 
+		<script src="js/helpers.js"></script>
+		<script src="js/store.js"></script>
+		<script src="js/model.js"></script>
+		<script src="js/view.js"></script>
+		<script src="js/controller.js"></script>
+    <script src="js/app.js"></script> 
+    <script>
+      var socket = io.connect('//localhost:3000');
+      require(['./syncreg', './syncimpl_client'], function(SyncReg, SyncImpl){
+        var SyncImplClient = requirejs("./syncimpl_client").SyncImplClient;
+        var SyncReg = requirejs("./syncreg").SyncReg;
+        var impl = new SyncImplClient(socket,window.app.todo);
+        window.app.syncImpl = impl;
+        SyncReg.register(socket, impl);
+        impl.checkout("todos");
+        
+        setInterval(function(){
+          impl.periodicSync();          
+        }, 1000);
+      });
+    </script>
+	</body>
+</html>
