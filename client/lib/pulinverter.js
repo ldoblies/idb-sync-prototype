@@ -8,12 +8,16 @@ define(function(require, exports, module){
   var _ = require('./underscore') || window._;
 
   /*
-   * UP-Handler for PULs that are the inversion of another PUL.
-   * Also normalizes.  
+   * UP Handler for PULs that are the inversion of another PUL. Normalizes as 
+   * well.  
+   *
+   * @author ldoblies
    */
   var PULInverter = exports.PULInverter = function(){
 
     this.error = null;
+
+    // UP HANDLER FUNCTIONS
 
     this.addUp_insert = function(pul, up){
       // Only accept the first insert of a document (because that's the oldest
@@ -65,11 +69,15 @@ define(function(require, exports, module){
       this.addUp_replace_in_object = this.addUp_insert_into_array =
       this.addUp_delete_from_array = this.addUp_replace_in_array
       = function(pul,up){
-        // Invalid UPs
+        // Invalid UPs that shouldn't appear in our current implementation
+        // of inversion.
         if (!this.error){
           this.error = "Invalid UP added to inverted PUL: " + up.type; 
         }
     };
+
+
+    // HELPER FUNCTIONS
 
     this.findUpdate = function(upType, selector, upCollection){
       for (var i = 0; i < upCollection.length; i++){

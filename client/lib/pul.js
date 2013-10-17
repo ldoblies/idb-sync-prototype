@@ -7,19 +7,25 @@ define(function(require, exports, module){
   var _ = require('./underscore') || window._;
 
   /*
-   * Update Primitive
+   * Update Primitive.
    *
-   * @param {String} type The type of the Update Primitive, a function
-   * in IJSONiq.js 
+   * @param {String} type The type of the Update Primitive, the name of a 
+   *  function in IJSONiq.js 
    * @param {String} target The target of the Update Primitive 
    * @param {Object} params Other parameters of the Update Primitive
+   *
+   * @author ldoblies
    */
   var UpdatePrimitive = exports.UpdatePrimitive = function(type, target, params){
     this.type = type;
     this.target = target;
     this.params = params;
-  }; 
- 
+  };
+
+  /**
+   * @return {String} A serialized target that includes the UP's selector,
+   *  if any
+   */
   UpdatePrimitive.prototype.effectiveTarget = function(){
     var _self = this;
     var ret = Utils.serializeTarget(this.target);
@@ -44,6 +50,13 @@ define(function(require, exports, module){
     return ret;
   };
 
+  /**
+   * Data structure optimized for storage and retrieval of the targets that a 
+   * PUL introduces into the storage layer. If there are multiple targets with
+   * matching prefixes, will only keep track of the shortest one.
+   *
+   * @author ldoblies
+   */
   var iTargetList = function(){
     this.list = [];
 
@@ -72,6 +85,19 @@ define(function(require, exports, module){
 
   /*
    * Pending Update List
+   *
+   * @param {Object} handler (optional) The handler for update primitives that 
+   * are added to this PUL. If provided, will call the handler's corresponding
+   * addUp() function for each update primitive that is to be added to the PUL.
+   * @param {PUL} fromPul (optional) If provided, will add all of fromPul's 
+   * UPs to this PUL.
+   *
+   * @see {@link UpdatePrimitive}
+   * @see {@link PULComposer}
+   * @see {@link PULInverter}
+   * @see {@link PULNormalizer}
+   *
+   * @author ldoblies
    */
   var PendingUpdateList = exports.PendingUpdateList = function(handler, fromPul){
 
@@ -85,7 +111,7 @@ define(function(require, exports, module){
     this.delete_from_array = [];
     this.replace_in_array = [];
 
-    /* List of all update primitives */
+    /** List all update primitives. */
     this.ups = function(){
       return this.replace_in_object.concat(this.delete_from_object).
         concat(this.rename_in_object).concat(this.insert_into_object).
@@ -94,6 +120,10 @@ define(function(require, exports, module){
         concat(this.insert);
     };
 
+    /**
+     * Add a copy of the update primitive to this PUL. Will use the UP handler 
+     * if present.
+     */
     this.addUpdatePrimitive = function(up){
       var upCopy = Utils.cloneObject(up);      
       var type = upCopy.type;
@@ -102,14 +132,17 @@ define(function(require, exports, module){
         addFunc.call(this.handler,this,up);
       }else{ 
         if (handler){
-          console.log("Warning: Adding update primitive (" + type + ") without handler function");
+          console.log("Warning: Adding update primitive (" + type + 
+              ") without handler function");
         }
         this[type].push(upCopy);
       }
     };
 
-    // Returns a cloneable version of this PUL (containing only the UP arrays, no functions)
-    // (This can be stored in IDB)
+    /**
+     * @return {Object} A cloneable version of this PUL (containing only the UP 
+     * arrays, no functions). This can be stored in IDB.
+     */
     this.cloneable = function(){
       return Utils.noFunctions(this);
     };
@@ -123,12 +156,18 @@ define(function(require, exports, module){
       });
     }
 
+    /**
+     * The UP Handler, if any.
+     */
     this.handler = handler;
 
     this.setHandler = function(h){
       this.handler = h;
     };
 
+    /**
+     * @return {Integer} The number of update primitives contained in this PUL
+     */
     this.numUps = function(){
       return this.del.length + this.insert.length + this.insert_into_object.length +
         this.delete_from_object.length + this.replace_in_object.length + 
@@ -136,8 +175,10 @@ define(function(require, exports, module){
         this.delete_from_array.length + this.replace_in_array.length;
     };
 
-    // Returns true iff the document specified by (collection,key) gets deleted
-    // if this pul is applied. 
+    /**
+     * @return {Boolean} True iff the document specified by (collection,key) 
+     * gets deleted if this pul is applied.
+     */  
     this.getsDeleted = function(collection, key){
       return _.find(this.del, function(curDel){
         return curDel.target.collection == collection &&
@@ -147,8 +188,10 @@ define(function(require, exports, module){
       }); 
     };
 
-    // Returns true iff a document with key 'key' gets inserted into 
-    // 'collection' if this pul is applied. 
+    /**
+     * @return {Boolean} True iff a document with key 'key' gets inserted into 
+     * 'collection' if this pul is applied. 
+     */
     this.getsInserted = function(collection, key){
       return _.find(this.insert, function(curInsert){
         return curInsert.target.collection == collection &&
@@ -158,14 +201,18 @@ define(function(require, exports, module){
       });
     };
 
-    // Returns true iff a document with key 'key' gets replaced in 
-    // 'collection' if this pul is applied. 
+    /**
+     * @return {Boolean} True iff a document with key 'key' gets replaced in 
+     * 'collection' if this pul is applied. 
+     */
     this.getsReplaced = function(collection, key){
       return this.getsDeleted(collection,key) && 
         this.getsInserted(collection,key);
     };
 
-    // Returns the keys/values that get replaced in objects by this PUL
+    /**
+     * @return {Array} The keys/values that get replaced in objects by this PUL
+     */
     this.computeUpdates = function(){
       var upd = this.replace_in_object;
       var ret = [];
@@ -177,10 +224,10 @@ define(function(require, exports, module){
       }
       return ret;
     };
-     
+
     /*
-     * Returns a targets object that contains for each kind of UP
-     * in the input pul the (serialized) targets that appear. 
+     * @return {Object} An object that contains for each kind of UP in this PUL 
+     * the (serialized) targets that appear. 
      */
     this.computeTargets = function(){
       var targets = {
@@ -249,16 +296,21 @@ define(function(require, exports, module){
       return targets;
     };
 
-    // Traverse the criteria of a target being introduced by a pul and
-    // return a (sorted by target string representation) list of (target,up) 
-    // pairs. This list contains no targets t1,t2 for which t1 contains t2 or 
-    // vice versa (because the shortest target always wins. If up1 introduces 
-    // t1 and up2 t2 where t1 is a prefix of t2, up1 "wins" for the db contents.
+    /**
+     * Traverse the criteria of a target being introduced by a pul and return a 
+     * (sorted by target string representation) list of (target,up) pairs. This 
+     * list contains no targets t1,t2 for which t1 contains t2 or vice versa.
+     * Ignores array UPs.
+     *
+     * @return {Array} (target,up) pairs of targets that are introduced by this
+     *  PUL, along with the UPs that introduce them. Sorted by the target's 
+     *  string representation.
+     */
     this.computeIntroducedTargets = function(){
       var _self = this;
       var ret = new iTargetList();
       var pulTargets = this.computeTargets();
-      
+
       // 1. Documents inserted by 'insert' UPs
       this.insert.forEach(function(curInsert){
         Object.keys(curInsert.idMap).forEach(function(curId){
@@ -267,7 +319,6 @@ define(function(require, exports, module){
               up: curInsert});
         });
       });
-
 
       // 2. Objects inserted by insert-into-object UPs (and not deleted by 
       // any delete UP)
@@ -284,7 +335,7 @@ define(function(require, exports, module){
       });
 
       // 3. Objects introduced by renames (and not deleted by any delete UP)
-       this.rename_in_object.forEach(function(curRIO){
+      this.rename_in_object.forEach(function(curRIO){
         if (!_self.getsDeleted(curRIO.target.collection, curRIO.target.key)){
           var item = {};
           item.target = Utils.serializeTarget(curRIO.target, curRIO.params[1]);
@@ -299,14 +350,14 @@ define(function(require, exports, module){
         var replaceValue = curRIO.params[1];
         if (typeof replaceValue === 'object' &&
           !_self.getsDeleted(curRIO.target.collection, curRIO.target.key)){
-          var kvPairs = Utils.getKeyValuePairs(replaceValue);
-          kvPairs.forEach(function(curKVPair){
-            var item = {};
-            item.target = Utils.serializeTarget(curRIO.target, curRIO.params[0] + "." +curKVPair.key);
-            item.up = curRIO;
-            ret.addItem(item);
-          });
-        }
+            var kvPairs = Utils.getKeyValuePairs(replaceValue);
+            kvPairs.forEach(function(curKVPair){
+              var item = {};
+              item.target = Utils.serializeTarget(curRIO.target, curRIO.params[0] + "." +curKVPair.key);
+              item.up = curRIO;
+              ret.addItem(item);
+            });
+          }
       });
 
       return ret.list;
@@ -314,7 +365,6 @@ define(function(require, exports, module){
 
   };
 
-   
   PendingUpdateList.prototype.toString = function(){
     var _self = this;
     var ret = "PUL[";
@@ -341,13 +391,18 @@ define(function(require, exports, module){
   };
 
 
+  /**
+   * Update Primitives Factory.
+   *
+   * @author ldoblies
+   */
   var UPFactory = exports.UPFactory = {
     insert: function(target, items){
       items = [].concat(items);
       var t = target.collection ? JSON.parse(JSON.stringify(target)) : {collection: target};
       delete t['key'];
       delete t['path'];
-      
+
       var params = [items];
       return new UpdatePrimitive("insert", t, params);
     },
@@ -410,17 +465,17 @@ define(function(require, exports, module){
 
 
     /**
-     * Return an array of update primitives that lead from newObj to oldObj 
-     * when applied
+     * @return {Array} Update primitives that lead from newObj to oldObj 
      */
     upInvert: function(target, oldObj, newObj){
       target = Utils.normalizeTarget(target);
       // NOTE this is brute-force overwriting, we could instead compute the
-      // diff between old/newObject and update primitives reflecting this diff
+      // diff between old/newObject and update primitives reflecting this diff.
+      // Could directly be achieved by Synthesis operator.
       return [this.del(target, [oldObj.id]), this.insert(target, [oldObj])];
     }
 
   };
 
 });
-  
+

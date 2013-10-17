@@ -1,5 +1,5 @@
+/** Client-side implementation of synchronization protocol */
 define(function(require, exports, module){
-
   var MessageFactory = require('./messages.js').MessageFactory; 
   var PUL = require('./lib/pul.js').PendingUpdateList;
   var UPFactory = require('./lib/pul.js').UPFactory;
@@ -12,13 +12,18 @@ define(function(require, exports, module){
 
   var SyncImplClient = exports.SyncImplClient = function(socket, app) {
 
+    /** IDB Wrapper cache */
     this.dbs = {};
 
+    /** Synchronization flags */
     this.syncing = false;
     this.syncIndex = -1;
 
+    /** The only collection in our prototype system */
     this.collection = "todos";
 
+    /** The periodically called function that checks whether a local PUL on
+     * this client exists and syncs with the server if so */
     this.periodicSync = function(){
       var _self = this;
       this.getLocalPul_complete(this.collection, function(localPul){
@@ -31,7 +36,48 @@ define(function(require, exports, module){
         }
       });
     };
-    
+
+    /* Start synchronization */
+    this.startSync = function(uri, localPul){
+      if (this.syncing){
+        console.log("ERROR: startSync() called while already synchronizing");
+        return;
+      }
+
+      console.log("Starting sync...");
+      this.syncing = true;
+      this.syncIndex = localPul.length - 1;
+
+      // Construct composed pul to send to server
+      var puls = [];
+      for (var i = 0; i <= this.syncIndex; i++){
+        puls.push(localPul[i]);
+      }
+      var composer = new PULComposer();
+      var pul = composer.composeMultiple(puls);
+      if (pul.error){
+        console.log("ERROR: invalid local PUL in startSync()");
+        this.endSync(uri);
+        return;
+      }
+
+      this.update_client(uri,pul);
+    };
+
+    /* End synchronization */
+    this.endSync = function(uri){
+      var _self = this;
+      if (!this.syncing){
+        console.log("ERROR: endSync() called while not synchronizing");
+        return;
+      }
+      this.removeFromLocalPul(uri, this.syncIndex + 1, function(){
+        _self.syncing = false;
+        console.log("...sync done for subscription: " + uri);
+      });
+    };
+    // DB FUNCTIONS
+
     this.getVersionDB = function(callback){
       this.getDataDB("ijsoniqsync_versions", callback);
     };
@@ -67,7 +113,6 @@ define(function(require, exports, module){
       });
     };
 
-
     this.setLocalVersion = function(uri, version, callback){
       var _self = this;
       var callback = callback || function(){};
@@ -84,7 +129,6 @@ define(function(require, exports, module){
         });
       });
     };
-
 
     this.getLocalPul = function(uri, callback){
       var _self = this;
@@ -103,8 +147,8 @@ define(function(require, exports, module){
     this.getLocalPul_complete = function(uri, callback){
       this.getLocalPul(uri, function(localPul){
         localPul = localPul || [];
-          for (var i = 0; i < localPul.length; i++){
-            localPul[i] = new PUL(null,localPul[i]);
+        for (var i = 0; i < localPul.length; i++){
+          localPul[i] = new PUL(null,localPul[i]);
         }
         callback(localPul);
       });
@@ -154,7 +198,7 @@ define(function(require, exports, module){
       });
     };
 
-      // Reset client idb
+    /** Reset client idb, clearing the todos and the version collections */
     this.reset = function(){
       this.getDataDB(this.collection, function(db){
         console.log("Clearing todos collection");
@@ -165,51 +209,12 @@ define(function(require, exports, module){
         db.clear();
       });
     };
-    
-    
-    /* Start synchronization */
-    this.startSync = function(uri, localPul){
-      if (this.syncing){
-        console.log("ERROR: startSync() called while already synchronizing");
-        return;
-      }
 
-      console.log("Starting sync...");
-      this.syncing = true;
-      this.syncIndex = localPul.length - 1;
 
-      // Construct composed pul to send to server
-      var puls = [];
-      for (var i = 0; i <= this.syncIndex; i++){
-        puls.push(localPul[i]);
-      }
-      var composer = new PULComposer();
-      var pul = composer.composeMultiple(puls);
-      if (pul.error){
-        console.log("ERROR: invalid local PUL in startSync()");
-        this.endSync(uri);
-        return;
-      }
-      
-      this.update_client(uri,pul);
-    };
-
-    /* End synchronization */
-    this.endSync = function(uri){
-      var _self = this;
-      if (!this.syncing){
-        console.log("ERROR: endSync() called while not synchronizing");
-        return;
-      }
-      this.removeFromLocalPul(uri, this.syncIndex + 1, function(){
-        _self.syncing = false;
-        console.log("...sync done for subscription: " + uri);
-      });
-    };
 
 
     // PROTOCOL INITIATION FUNCTIONS
- 
+
     this.checkout = function(uri){
       this.getLocalVersion(uri, function(version){
         var msg = MessageFactory.msg_checkout(uri, version);
@@ -228,7 +233,7 @@ define(function(require, exports, module){
 
 
     // PROTOCOL HANDLER FUNCTIONS
-    
+
     this.handle_data = function(data){
       console.log("Client handling data msg:");
       console.log(JSON.stringify(data));
@@ -236,7 +241,7 @@ define(function(require, exports, module){
       var version = data.version;
       var update = data.update;
       data = data.data;
-      
+
       var onError = function(err){
         console.log("handle_data ERROR:", err);
       };
@@ -251,18 +256,18 @@ define(function(require, exports, module){
           });
           db.batch(batch, function(){
             console.log("Set " + uri + " data");
-                      
-          // Apply update, if any
-          if (update){
-            IJSONiq.applyPul(new PUL(null, update), function(){
-              app.updateView();              
-            });
-          }else{
-            app.updateView();              
-          }
 
-          // Update localversion
-          _self.setLocalVersion(uri, version);
+            // Apply update, if any
+            if (update){
+              IJSONiq.applyPul(new PUL(null, update), function(){
+                app.updateView();              
+              });
+            }else{
+              app.updateView();              
+            }
+
+            // Update localversion
+            _self.setLocalVersion(uri, version);
 
           },onError);
         },onError);
@@ -410,7 +415,7 @@ define(function(require, exports, module){
       var onError = function(err){
         console.log("remove ERROR:", err);
       };
-      
+
       this.getDataDB(collection, function(db){
         // Generate remove PUL
         var pul = new PUL();
@@ -423,8 +428,8 @@ define(function(require, exports, module){
 
 
 
-    // REMOTE / LOCAL UPDATE APPLIANCE USING IJSONIQ
-    
+    // REMOTE / LOCAL UPDATE APPLICATION USING IJSONIQ
+
     this.applyRemoteUpdate = function(uri, update,toVersion, onSuccess, onError){
       var _self = this;
       console.log("Applying remote update: " + update);
@@ -476,17 +481,10 @@ define(function(require, exports, module){
       });
     };
 
-
-    // check if update pending: local flag with index on localpuls
-    // localpul: list of (complete puls) having a pul.inverted field
-    // on sync with server: set sync flag & index of up to where we sync
-    // on updatereply: if ok, remove localpul up to index, clear sync flag
-    //   else if conflict, invert localpul
-
   };
 
 });
 
-    
+
 
 

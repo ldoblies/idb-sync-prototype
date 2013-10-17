@@ -1,4 +1,3 @@
-
 /**
  * PUL Normalizer / Validator
  */ 
@@ -9,14 +8,16 @@ define(function(require, exports, module){
   var _ = require('./underscore') || window._;
 
   /**
-   * Normalizer (UP-Handler for normalized PULs)
+   * Normalizer (UP Handler for normalized PULs)
+   *
+   * @author ldoblies
    */
   var PULNormalizer = exports.PULNormalizer = function(){
 
     this.error = null;
 
     /**
-     * Normalize and statically validate PUL
+     * Normalize and statically validate PUL.
      */
     this.normalize = function(inputPul){
       var p = new PUL(this);      
@@ -33,7 +34,6 @@ define(function(require, exports, module){
       return p;
     };
 
-
     /**
      * Finalize a valid, normalized PUL. The output is a PUL that is ready
      * to be applied by applyPul().
@@ -43,8 +43,7 @@ define(function(require, exports, module){
      *         jupd:replace-in-array primitives that have the same target as
      *         a jupd:delete-from-object/jupd:delete-from-array primitive
      *         (i.e. they are non-effective).
-     * Orders jupd:*-array primitives right-to-left w.r.t. their selectors
-     *
+     * Orders jupd:*-array primitives right-to-left w.r.t. their selectors.
      */
     this.finalizePUL = function(pul){
       // 1. Duplicate Removal
@@ -108,6 +107,10 @@ define(function(require, exports, module){
       return pul;
     };
 
+
+   
+    // UP HANDLER FUNCTIONS
+    
     this.addUp_insert = function(pul, up){
       // Add items to insert update primitive with same target collection,
       // if found. Else add a new insert update primitive.
@@ -241,6 +244,9 @@ define(function(require, exports, module){
         pul.replace_in_array.push(up);
       }
     };
+
+
+    // HELPER FUNCTIONS
 
     this.findUpdate = function(upType, selector, upCollection){
       for (var i = 0; i < upCollection.length; i++){
