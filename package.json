@@ -1,0 +1,16 @@
+{
+  "name": "idb-sync-prototype",
+  "version": "0.0.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ldoblies/idb-sync-prototype"
+  },
+  "author": "Luchin Doblies",
+  "readmeFilename": "README.md",
+  "dependencies": {
+    "asyncjs": "0.0.9",
+    "amd-loader": "0.0.5",
+    "async": "~0.2.9",
+    "walk": "~2.2.1"
+  }
+}
