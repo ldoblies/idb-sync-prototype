@@ -10,10 +10,12 @@ define(function(require, exports, module){
   var _ = require('./underscore') || window._;
 
   /**
-   * Composer (UP-Handler for a PUL that is to be composed with the incoming 
+   * Composer (UP Handler for a PUL that is to be composed with the incoming 
    * UPs). Assuming that the two PULs are serial, i.e., the right-hand-side PUL
    * was created from the database state after the left-hand-side PUL was 
    * applied. 
+   *
+   * @author ldoblies
    */
   var PULComposer = exports.PULComposer = function(){
 
@@ -24,6 +26,7 @@ define(function(require, exports, module){
       this.error = err;
     }; 
 
+    /** Compose an array of successive PULs */
     this.composeMultiple = function(puls){
       var composed = puls[0];
       for (var i = 1; !composed.error && i < puls.length; i++){
@@ -34,7 +37,11 @@ define(function(require, exports, module){
 
     /**
      * Compose pul1, pul2. pul2 is the right-hand-side PUL for composition.
-     * Both pul1 and pul2 are normalized PULs.
+     *
+     * @param {PUL} pul1 Left-hand side PUL. The composed PUL will be initiated
+     *  to a copy of pul1 in the beginning, and then be composed with the UPs 
+     *  from p2
+     * @param {PUL} pul2 Right-hand side PUL
      */
     this.compose = function(pul1, pul2){
       var p = Utils.cloneObject(pul1);
@@ -42,7 +49,7 @@ define(function(require, exports, module){
       p = normalizer.normalize(p);
       pul2 = Utils.cloneObject(pul2);
       pul2 = normalizer.normalize(pul2);
-    
+
       if (p.error || !p.isNormalized){
         p.error = "Invalid left-hand-side PUL for composition";
         return p;
@@ -63,22 +70,25 @@ define(function(require, exports, module){
       return p;
     };
 
-    this.finalize = function(pul){
-      // remove idMap2, delIds2 
-      // remove UPs that are empty (insert without docs, del without ids,
-      // iio without key/value pairs, dfo without names, )
-      // remove iTargets
-      // + normalization finalizing
 
+
+    // INTERNALS 
+
+
+    /** 
+     * To be called once after PUL composition. Removes any temporary data 
+     * structures introduced into the composed PUL and normalizes it.
+     */
+    this.finalize = function(pul){
       // Remove introducedTargets from pul
       delete pul["introducedTargets"];
-      
+
       // Remove idMap2 from insert UPs
       var upd = pul.insert;
       for (var i = 0; i < upd.length; i++){
         delete upd[i]["idMap2"];
       };
-      
+
       // Remove delIds2 from delete UPs
       upd = pul.del;
       for (var i = 0; i < upd.length; i++){
@@ -104,9 +114,11 @@ define(function(require, exports, module){
       return pul;
     };
 
-    // If pul introduces the target (or any of its ancestors) of up, return 
-    // the update primitive in the pul that introduces it. Otherwise return 
-    // undefined.' 
+    /**
+     * @return {UpdatePrimitive} If pul introduces the target (or any of its 
+     *  ancestors) of up, the update primitive in the pul that introduces it. 
+     *  Else, undefined. 
+     */
     this.getAggregationTarget = function(pul, up){
       // Insert/delete ups are handled separately - they don't require
       // aggregation 
@@ -125,6 +137,53 @@ define(function(require, exports, module){
         }
       }
     };
+
+    /**
+     * Aggregate sourceUp on targetUp. 
+     * @return {Boolean} True iff sourceUp was updated and still has to be added
+     *  to the pul.
+     *
+     * @see {@link UPAggregator}
+     */
+    this.aggregate = function(pul, targetUp, sourceUp){
+      var aggResult = UPAggregator.aggregate(pul,targetUp,sourceUp);
+      if (aggResult.error){
+        this.error = aggResult.error;
+      }
+      return aggResult.sourceModified;
+    };
+
+
+    // HELPER FUNCTIONS
+
+    this.findUpdate = function(upType, selector, upCollection){
+      for (var i = 0; i < upCollection.length; i++){
+        var curUp = upCollection[i];
+        if (curUp.type === upType){
+          var found = true;
+          for (var j = 0; j < selector.length && found; j++){
+            if (!this.evalSelector(curUp, selector[j])){
+              found = false;
+            }
+          }
+          if (found) { return curUp; }
+        }
+      }
+    };
+
+    this.evalSelector = function(up, selector){
+      var upValue = up[selector.key];
+      if (selector.index !== undefined){
+        upValue = upValue[selector.index];
+      }
+      if (selector.key === "target"){
+        return Utils.targetsEqual(upValue, selector.value);
+      }
+      return upValue === selector.value;
+    };
+
+
+    // UP HANDLER FUNCTIONS
 
     this.addUp_insert = function(pul, up){
       // Add items to insert update primitive with same target collection,
@@ -370,41 +429,5 @@ define(function(require, exports, module){
       }
     };
 
-    // Aggregate sourceUp on targetUp. 
-    // Returns true iff sourceUp was updated and still has to be added to the pul.
-    this.aggregate = function(pul, targetUp, sourceUp){
-      var aggResult = UPAggregator.aggregate(pul,targetUp,sourceUp);
-      if (aggResult.error){
-        this.error = aggResult.error;
-      }
-      return aggResult.sourceModified;
-    };
-
-    this.findUpdate = function(upType, selector, upCollection){
-      for (var i = 0; i < upCollection.length; i++){
-        var curUp = upCollection[i];
-        if (curUp.type === upType){
-          var found = true;
-          for (var j = 0; j < selector.length && found; j++){
-            if (!this.evalSelector(curUp, selector[j])){
-              found = false;
-            }
-          }
-          if (found) { return curUp; }
-        }
-      }
-    };
-
-    this.evalSelector = function(up, selector){
-      var upValue = up[selector.key];
-      if (selector.index !== undefined){
-        upValue = upValue[selector.index];
-      }
-      if (selector.key === "target"){
-        return Utils.targetsEqual(upValue, selector.value);
-      }
-      return upValue === selector.value;
-    };
   };
-
 });

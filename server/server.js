@@ -9,16 +9,7 @@ var SyncImplServer = require('./syncimpl_server.js').SyncImplServer;
 var SyncReg = require('./syncreg.js').SyncReg;
 var syncImpl = new SyncImplServer();
 
-// Send current time to all connected clients
-function sendTime() {
-  io.sockets.emit('time', { time: new Date().toJSON() });
-}
-
-// Emit welcome message on connection
+// Register server side of the synchronization protocol on each connected client
 io.sockets.on('connection', function(socket) {
   SyncReg.register(socket, syncImpl);
-  socket.broadcast.emit('user connected');
-  socket.emit('welcome', { message: 'Welcome!' });
-
-  socket.on('i am client', console.log);
 });

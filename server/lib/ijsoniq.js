@@ -1,5 +1,5 @@
 /**
- * JS module that implements JSONiq update primitives using IndexedDB as backend
+ * Module that provides JSONiq PUL application on IndexedDB
  */
 define(function(require, exports, module){
 
@@ -12,14 +12,30 @@ define(function(require, exports, module){
   var PULNormalizer = require('./pulnormalizer').PULNormalizer;
   var PULInverter = require('./pulinverter').PULInverter;
 
-  //var fs = require('fs');
-
+  /**
+   * Module that provides JSONiq PUL application on IndexedDB
+   *
+   * @author ldoblies
+   */
   var IJSONiq = exports.IJSONiq = {
 
+
+    // DATA ACCESS
+
+    /**
+     * Traverse a collection and call onItem(item) for each encountered record,
+     * and onItem(undefined) once after all records have been processed.
+     *
+     * @param {String} name The name of the collection to traverse
+     * @param {Function} onItem Success callback. Called for each encountered 
+     *  record once, plus once with 'undefined' as argument after all items 
+     *  have been processed
+     * @param {Function} onError Error callback
+     */
     collection: function(name, onItem, onError){
       var store;
       var storeArgs = {
-          storeName: name 
+        storeName: name 
       };
       store = new IDBWrapper(storeArgs, function(){
         var tx = store.openTransaction([name], store.consts().READ_ONLY);
@@ -39,8 +55,23 @@ define(function(require, exports, module){
       });
     },
 
+
+
+    // UPDATE PRIMITIVES APPLICATION
+
     /**
-     * Delete items from target collection
+     * jupd:delete
+     *
+     * @param {Target} target Target of the update primitive
+     * @param {Array} ids The ids to remove from the target collection
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
      */
     del: function(target, ids, onSuccess, onError, store, transaction){
       var _self = this;
@@ -58,31 +89,32 @@ define(function(require, exports, module){
         store.batch(removes, onSuccess, onError);
       };
 
-      var applyDels = function(target, ids, onSuccess, onError, transaction, invertedPul){
-        if (!invertedPul) { invertedPul = new PendingUpdateList(new PULInverter());}
-        if (ids.length == 0){ return onSuccess(invertedPul.ups());}
-        var onGetSuccess = function(event){
-          var obj = event.target.result;
-          var onRemoveSuccess = function(){
-            if (obj){
-              invertedPul.addUpdatePrimitive(UPFactory.insert(target, obj));
-            }
-            ids.shift();
-            applyDels(target, ids, onSuccess, onError, transaction, invertedPul);
+      var applyDels = 
+        function(target, ids, onSuccess, onError, transaction, invertedPul){
+          if (!invertedPul) { invertedPul = new PendingUpdateList(new PULInverter());}
+          if (ids.length == 0){ return onSuccess(invertedPul.ups());}
+          var onGetSuccess = function(event){
+            var obj = event.target.result;
+            var onRemoveSuccess = function(){
+              if (obj){
+                invertedPul.addUpdatePrimitive(UPFactory.insert(target, obj));
+              }
+              ids.shift();
+              applyDels(target, ids, onSuccess, onError, transaction, invertedPul);
+            };
+            var onRemoveError = function(){
+              onError("Failed to delete document with id", ids[0]);
+            };
+            var deleteRequest = 
+              transaction.objectStore(target.collection)['delete'](ids[0]);
+            deleteRequest.onsuccess = onRemoveSuccess;
+            deleteRequest.onerror = onRemoveError;
           };
-          var onRemoveError = function(){
-            onError("Failed to delete document with id", ids[0]);
-          };
-          var deleteRequest = 
-            transaction.objectStore(target.collection)['delete'](ids[0]);
-          deleteRequest.onsuccess = onRemoveSuccess;
-          deleteRequest.onerror = onRemoveError;
-        };
 
-        var getRequest = transaction.objectStore(target.collection).get(ids[0]);
-        getRequest.onsuccess = onGetSuccess;
-        getRequest.onerror = onError;
-      };
+          var getRequest = transaction.objectStore(target.collection).get(ids[0]);
+          getRequest.onsuccess = onGetSuccess;
+          getRequest.onerror = onError;
+        };
 
 
       if (transaction){
@@ -96,7 +128,6 @@ define(function(require, exports, module){
         var storeArgs = {
           storeName: target.collection
         };
-
         store = new IDBWrapper(storeArgs, function(){
           onStore();
         });
@@ -104,8 +135,19 @@ define(function(require, exports, module){
     },
 
     /**
-     * Insert items into 'name' collection
-     */
+     * jupd:insert
+     *
+     * @param {Target} target Target of the update primitive
+     * @param {Array} items The records to insert into target collection
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
+     */   
     insert: function(name, items, onSuccess, onError, store, transaction){
       var _self = this;
       var target = name.collection? name : {collection: name};
@@ -125,25 +167,24 @@ define(function(require, exports, module){
 
       var applyInserts = 
         function(target, items, onSuccess, onError, transaction, invertedPul){
-        if (!invertedPul) { invertedPul = new PendingUpdateList(new PULInverter());}
-        if (items.length == 0){ return onSuccess(invertedPul.ups());}
+          if (!invertedPul) { invertedPul = new PendingUpdateList(new PULInverter());}
+          if (items.length == 0){ return onSuccess(invertedPul.ups());}
 
-        var onAddSuccess = function(event){
-          var id = event.target.result;
-          var up = UPFactory.del(target, [id]);
-          invertedPul.addUpdatePrimitive(up);
-          items.shift();
-          applyInserts(target, items, onSuccess, onError, transaction, invertedPul);
+          var onAddSuccess = function(event){
+            var id = event.target.result;
+            var up = UPFactory.del(target, [id]);
+            invertedPul.addUpdatePrimitive(up);
+            items.shift();
+            applyInserts(target, items, onSuccess, onError, transaction, invertedPul);
+          };
+          var onAddError = function(event){
+            onError("Failed to insert document " + JSON.stringify(items[0]));
+          };
+          var addRequest = 
+            transaction.objectStore(target.collection).add(items[0]);
+          addRequest.onsuccess = onAddSuccess;
+          addRequest.onerror = onAddError;
         };
-        var onAddError = function(event){
-          onError("Failed to insert document " + JSON.stringify(items[0]));
-        };
-        var addRequest = 
-          transaction.objectStore(target.collection).add(items[0]);
-        addRequest.onsuccess = onAddSuccess;
-        addRequest.onerror = onAddError;
-      };
-
 
       if (transaction){
         applyInserts(target, items, onSuccess, onError, transaction);
@@ -163,13 +204,21 @@ define(function(require, exports, module){
       }
     },
 
-    /*
-     * Insert all pairs of the 'source' object into 'target' object
+    /**
+     * jupd:insert-into-object
      *
-     * target: object (collection, key, [path])
-     * source: object
-     *
-     */
+     * @param {Target} target Target of the update primitive
+     * @param {Object} source The source object containing the key/value pairs to
+     *  be inserted into target object
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
+     */   
     insert_into_object: function(target, source, onSuccess, onError, store, transaction){
       var kvPairs = Utils.getKeyValuePairs(source);
       var keyPrefix = target.path? target.path + "." : ""; 
@@ -187,18 +236,24 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return 
+        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
-
-    /*
-     * Remove the pairs the names of which appear in 'names'
-     * from the 'target' object
+    /**
+     * jupd:delete-from-object
      *
-     * target: object (collection, key, [path])
-     * names: array[string]
-     *
-     */
+     * @param {Target} target Target of the update primitive
+     * @param {Array} names The keys to delete from target object
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
+     */ 
     delete_from_object: function(target, names, onSuccess, onError, store, transaction){
       names = [].concat(names);
       var keyPrefix = target.path? target.path + "." : "";
@@ -215,20 +270,25 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return 
+        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
-
-    /*
-     * Replace the value of the pair named 'name' in the 'target' 
-     * object with the item 'item' (do nothing if there is no 
-     * such pair)
+    /**
+     * jupd:replace-in-object
      *
-     * target: object (collection, key, [path])
-     * name: string
-     * item: object
-     *
-     */
+     * @param {Target} target Target of the update primitive
+     * @param {String} name The key of the value to replace
+     * @param {Value} item The value to replace the target with
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
+     */ 
     replace_in_object: function(target, name, item, onSuccess, onError, store, transaction){
       var keyPrefix = target.path? target.path + "." : "";
       var update = UpdateFactory.replaceUpdate(keyPrefix + name, item);
@@ -238,19 +298,25 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return 
+        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
-
-    /*
-     * Rename the pair originally named 'name' in the 'target' object
-     * as 'newName' (do nothing if there is no such pair)
+    /**
+     * jupd:rename-in-object
      *
-     * target: object (collection, key, [path])
-     * name: string
-     * newName: string
-     *
-     */
+     * @param {Target} target Target of the update primitive
+     * @param {String} name The key to rename 
+     * @param {String} newName The value to rename the key to
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
+     */ 
     rename_in_object: function(target, name, newName, onSuccess, onError, store, transaction){
       var keyPrefix = target.path? target.path + "." : "";
       var update = UpdateFactory.renameUpdate(keyPrefix + name, newName);
@@ -260,22 +326,27 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return 
+        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
-
     /**
-     * Insert all items in 'source' before position 'index' 
-     * into target array 'target'
-     * 
-     * target: object (collection, key, [path])
-     * index: int (index in 1-based array)
-     * source: array
+     * jupd:insert-into-array
      *
-     */
+     * @param {Target} target Target of the update primitive
+     * @param {Integer} index The index at which to insert items
+     * @param {Array} source The items to insert
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
+     */ 
     insert_into_array: function(target, index, source, onSuccess, onError, store, transaction){
-      // TODO behavior if index out of range?
-      index--;
+      index--; // JSONiq uses 1-based indices
       if (!target.path){
         return false;
       }
@@ -287,21 +358,25 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return
+        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
-
-    /*
-     * Remove the item at position 'index' from the 'target' 
-     * array (causes all following items in the array to move 
-     * one position to the left)
+    /**
+     * jupd:delete-from-array
      *
-     * target: object (collection, key, [path])
-     * index: int (index in 1-based array)
-     *
+     * @param {Target} target Target of the update primitive
+     * @param {Integer} index The index of the item to delete
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
      */
-    delete_from_array: function(target, index, onSuccess, onError, store, transaction){  
-      // TODO behavior if index out of range?
+    delete_from_array: function(target, index, onSuccess, onError, store, transaction){
       index--;
       if (!target.path){
         return false;
@@ -314,19 +389,24 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return 
+        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
-
-    /*
-     * Replace the item at position 'index' in 'target' array
-     * with 'item' (do nothing if 'index' is not comprised 
-     * between 1 and target array size)
+    /**
+     * jupd:replace-in-array
      *
-     * target: object (collection, key, [path])
-     * index: int (index in 1-based array)
-     * item: object
-     *
+     * @param {Target} target Target of the update primitive
+     * @param {Integer} index The index of the item to replace 
+     * @param {Value} item The value to replace the target item with
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
      */
     replace_in_array: function(target, index, item, onSuccess, onError, store, transaction){  
       index--;
@@ -340,10 +420,26 @@ define(function(require, exports, module){
         console.log('replace-in-array succeeded');
         if (onSuccess) {onSuccess(result);}
       }
-      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return 
+        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
-
-
+    
+    /**
+     * Helper function that executes an update produced by {@link UpFactory}.
+     *
+     * @param {Target} target Target of the update primitive
+     * @param {Object} update The update to apply
+     * @param {Function} onSuccess Success callback
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update 
+     *
+     *  @see {@link UpFactory}
+     */
     executeUpdate: function(target, update, onSuccess, onError, store, transaction){
       if (store){
         store.update(target.key, update, onSuccess, onError, transaction, target.collection);
@@ -361,9 +457,18 @@ define(function(require, exports, module){
     },
 
 
+    // PUL APPLICATION
+
     indexUp:  1,
     numUps: -1,
 
+    /**
+     * Asynchronously apply a PUL on IndexedDB.
+     *
+     * @param {Function} onResult Callback. Will retrieve the inverted PUL
+     *  as 1. argument if the update succeeded. Otherwise, will retrieve an
+     *  Error object as 2. argument.
+     */
     applyPul: function(pul, onResult){
       var _self = this;
       var transaction;
@@ -377,7 +482,8 @@ define(function(require, exports, module){
       }
 
       this.numUps = pul.numUps();
-      console.log("Applying PUL with " + this.numUps + " update primitives.");
+      var pluralized = this.numUps > 1 ? "primitives" : "primitive";
+      console.log("Applying PUL with " + this.numUps + " update " + pluralized + ".");
       this.indexUp = 1;
 
       // Iterate through the ups to determine
@@ -418,6 +524,20 @@ define(function(require, exports, module){
       });
     },
 
+    /**
+     * Helper function that applies an array of update primitives successively.
+     *
+     * @param {Function} onSuccess Success callback. Will retrieve the inverted
+     *  PUL as 1. argument
+     * @param {Function} onError Error callback
+     * @param {IDBWrapper} store (optional) The store to use for the update.
+     *  Will instantiate a new store on target collection if required
+     * @param {IDBTransaction} transaction (optional) The IndexedDB transaction
+     *  to use for the update. Will use no transaction if not provided. Note
+     *  that if both a store and a transaction are provided, only the
+     *  transaction will be used for the update
+     * @param {Object} invertedPul Do not provide. Used in recursive calls
+     */
     applyUpdatePrimitives: function(ups, onSuccess, onError, store, transaction, invertedPul){
       var _self = this; 
       if (!invertedPul){
@@ -427,7 +547,7 @@ define(function(require, exports, module){
         return onSuccess(invertedPul);
       }
       var up = ups.shift();
-      console.log("Applying update primitive " + (this.indexUp++) + "/" + this.numUps 
+      console.log("Applying update primitive " + (this.indexUp++) + "/" + this.numUps
           + ": " + JSON.stringify(up));
       var type = up.type;
       var params = Utils.cloneObject(up.params);
@@ -450,7 +570,6 @@ define(function(require, exports, module){
       params.push(onUpError);
       params.push(store);
       params.push(transaction);
-
 
       var applyFunc = this[type];
       if (!applyFunc){
