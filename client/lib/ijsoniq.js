@@ -236,8 +236,7 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return 
-        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
     /**
@@ -270,8 +269,7 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return 
-        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
     /**
@@ -298,8 +296,7 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return 
-        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
     /**
@@ -326,8 +323,7 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return 
-        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
     /**
@@ -358,8 +354,7 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return
-        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
     /**
@@ -389,8 +384,7 @@ define(function(require, exports, module){
         if (onSuccess) {onSuccess(result);}
       }
 
-      return 
-        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
 
     /**
@@ -420,8 +414,7 @@ define(function(require, exports, module){
         console.log('replace-in-array succeeded');
         if (onSuccess) {onSuccess(result);}
       }
-      return 
-        this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
+      return this.executeUpdate(target, update, newOnSuccess, onError, store, transaction);
     },
     
     /**
